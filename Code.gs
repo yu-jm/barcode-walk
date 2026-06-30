@@ -126,8 +126,8 @@ function getRecentWalks() {
   
   if (lastRow <= 1) return { data: [], timeout: timeoutMinutes };
   
-  // 최근 100건 정도 가져오기
-  const startRow = Math.max(2, lastRow - 99);
+  // 최근 1000행까지 읽기 (하루 400건+ 충분히 커버), 이후 오늘 것만 필터
+  const startRow = Math.max(2, lastRow - 999);
   const numRows = lastRow - startRow + 1;
   
   // 컬럼 1~9: 학번, 반, 구분, 이름, walk, 담당자, 기숙사, 퀀텀, 산책종료시간
@@ -150,7 +150,28 @@ function getRecentWalks() {
     };
   });
   
-  return { data: recentData, timeout: timeoutMinutes };
+  // 오늘 등록분만 반환 (날짜가 바뀌면 전일 데이터 제외)
+  const todayData = recentData.filter(function (r) {
+    return isTodayGs_(r.walkTime);
+  });
+
+  return { data: todayData, timeout: timeoutMinutes };
+}
+
+// 해당 기록이 '오늘'인지 판별 (서버측)
+function isTodayGs_(walkTime) {
+  if (!walkTime) return false;
+  var s = String(walkTime).trim();
+  var n = new Date();
+  var todayStr = n.getFullYear() + "-" +
+    ("0" + (n.getMonth() + 1)).slice(-2) + "-" +
+    ("0" + n.getDate()).slice(-2);
+  if (s.slice(0, 10) === todayStr) return true;
+  var d = new Date(s.replace(" ", "T"));
+  if (isNaN(d.getTime())) return false;
+  return d.getFullYear() === n.getFullYear() &&
+    d.getMonth() === n.getMonth() &&
+    d.getDate() === n.getDate();
 }
 
 // 새로운 함수: 산책 종료 시간 기록
@@ -161,8 +182,8 @@ function setEndWalkTime(id, walkTime, endTime) {
   
   if (lastRow <= 1) return false;
   
-  // 최근 500건 정도 안에서 찾기 (역순 검색)
-  const startRow = Math.max(2, lastRow - 499);
+  // 최근 1000건 안에서 찾기 (역순 검색)
+  const startRow = Math.max(2, lastRow - 999);
   const numRows = lastRow - startRow + 1;
   const data = ws.getRange(startRow, 1, numRows, 5).getDisplayValues();
   

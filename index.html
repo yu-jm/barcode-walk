@@ -253,7 +253,7 @@
       background: transparent;
       color: var(--text-main);
       border: none !important;
-      border-bottom: 1px solid rgba(163, 177, 198, 0.22) !important;
+      border-bottom: 1px solid rgba(130, 145, 170, 0.5) !important;
     }
 
     /* 반 ~ 종료일시: 한 포인트 크게 + 볼드 */
@@ -301,6 +301,20 @@
 
     table.table td.actionBtn button:active {
       box-shadow: var(--nm-inset-sm);
+    }
+
+    /* 시간 초과 표시 — 채도 낮춘 부드러운 로즈레드, 둥근 배지 */
+    .walk-dt.over {
+      display: inline-block;
+      background: #d98a92;       /* 채도 낮춘 로즈레드 */
+      color: #fff;
+      border-radius: 8px;
+      padding: 2px 8px;
+    }
+
+    /* '분 경과' 빨강도 톤다운 */
+    table.table .text-danger {
+      color: #c77784 !important;
     }
   </style>
   <title>바코드_walk (버셀)</title>
@@ -490,6 +504,7 @@
       if (!cellEl) return;
       cellEl.innerHTML = '';
       var t = document.createElement('div');
+      t.className = 'walk-dt';
       t.textContent = dateTimeStr || '';
       var m = document.createElement('div');
       m.textContent = managerName || '';
@@ -733,8 +748,9 @@
 
       rows.forEach(function (tr) {
         var walkCell = tr.querySelector(".walkTime");
+        var dtEl = walkCell ? walkCell.querySelector(".walk-dt") : null;
         if (tr.dataset.completed === "true") {
-          if (walkCell) { walkCell.style.color = ""; walkCell.style.backgroundColor = ""; }
+          if (dtEl) dtEl.classList.remove("over");
           return;
         }
 
@@ -752,10 +768,10 @@
         if (endCell) endCell.textContent = elapsedMinutes + "분 경과";
 
         if (elapsedMs > timeoutMs) {
-          if (walkCell) { walkCell.style.color = "white"; walkCell.style.backgroundColor = "red"; }
+          if (dtEl) dtEl.classList.add("over");
           if (endCell) endCell.className = "endTime fw-bold text-danger";
         } else {
-          if (walkCell) { walkCell.style.color = ""; walkCell.style.backgroundColor = ""; }
+          if (dtEl) dtEl.classList.remove("over");
           if (endCell) endCell.className = "endTime fw-bold text-secondary";
         }
       });
@@ -780,7 +796,8 @@
       if (endCell) { endCell.textContent = endTimeStr; endCell.className = "endTime fw-bold text-success"; }
 
       var walkCell = tr.querySelector(".walkTime");
-      if (walkCell) { walkCell.style.color = ""; walkCell.style.backgroundColor = ""; }
+      var dtEl = walkCell ? walkCell.querySelector(".walk-dt") : null;
+      if (dtEl) dtEl.classList.remove("over");
 
       gasCall('setEndWalkTime', { id: id, walkTime: walkTime, endTime: endTimeStr })
         .then(function (success) { btn.textContent = success ? "종료됨" : "실패"; })

@@ -120,15 +120,27 @@
       vertical-align: middle;
     }
 
+    /* 반 ~ 종료일시: 한 포인트 키우고 볼드 처리 */
+    table.table tbody td.ban,
+    table.table tbody td.qtum,
     table.table tbody td.walkTime,
     table.table tbody td.endTime {
-      font-size: 0.5rem;
+      font-weight: 700;
+    }
+
+    table.table tbody td.ban {
+      font-size: 0.66rem;
+    }
+
+    table.table tbody td.walkTime,
+    table.table tbody td.endTime {
+      font-size: 0.58rem;
     }
 
     table.table tbody td.qtum {
       white-space: normal;     /* 퀀텀관 등만 줄바꿈 허용 */
       word-break: keep-all;
-      font-size: 0.55rem;
+      font-size: 0.63rem;
     }
 
     table.table tbody .sID {

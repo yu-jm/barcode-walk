@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="ko">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/css/bootstrap.min.css" rel="stylesheet"
+    integrity="sha384-rbsA2VBKQhggwzxH7pPCaAqO46MgnOM80zW1RWuH61DGLwZJEdK2Kadq2F9CUG65" crossorigin="anonymous">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+
+  <style>
+    html,
+    body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      font-size: 16px;
+      overscroll-behavior: none;
+      -webkit-user-select: none;
+      user-select: none;
+      background-color: #f8f9fa;
+    }
+
+    body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 10px;
+      box-sizing: border-box;
+    }
+
+    #interactive {
+      width: 95%;
+      max-width: 95%;
+      height: auto;
+      margin: 0 auto;
+      display: block;
+      box-sizing: border-box;
+    }
+
+    canvas.drawing,
+    canvas.drawingBuffer {
+      position: absolute;
+      top: 0;
+      left: 0;
+    }
+
+    #resultBox {
+      width: 90%;
+      text-align: center;
+      margin: 9px auto 0;
+      box-sizing: border-box;
+    }
+
+    #barcodeInput {
+      width: 90%;
+      height: 45px;
+      font-size: 16px;
+      padding: 5px;
+      box-sizing: border-box;
+    }
+
+    #resultBox input[type="button"] {
+      width: 60%;
+      margin: 6px auto;
+      font-size: 15px;
+      padding: 10px;
+    }
+
+    #msgDiv {
+      font-size: 30px;
+      padding: 5px;
+      box-sizing: border-box;
+    }
+
+    .container-fluid {
+      max-width: 100%;
+      padding: 0 5px;
+    }
+
+    /* 담당자 선택 모달 */
+    #managerModal {
+      z-index: 9999;
+    }
+
+    .manager-select-btn {
+      font-size: 1.2rem;
+      padding: 15px 20px;
+      margin: 8px 0;
+      width: 100%;
+      text-align: center;
+    }
+  </style>
+  <title>바코드_walk (버셀)</title>
+</head>
+
+<body>
+  <!-- 담당자 선택 모달 -->
+  <div class="modal fade" id="managerModal" tabindex="-1" aria-labelledby="managerModalLabel" aria-hidden="true"
+    data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="managerModalLabel">담당자 선택</h5>
+        </div>
+        <div class="modal-body">
+          <p class="mb-3" style="font-size: 1.1rem;">작업할 담당자를 선택해주세요.</p>
+          <div id="managerList" class="d-grid gap-2">
+            <!-- 담당자 목록이 동적으로 추가됨 -->
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="container-fluid p-0">
+    <div id="interactive" class="viewport"></div>
+
+    <div id="resultBox">
+      <input type="text" id="barcodeInput" placeholder="스캔된 바코드가 여기에 표시됩니다" readonly>
+      <input type="button" value="카메라 활성화" id="startScanner" onclick="startScanner()" style="display:block;">
+      <input type="button" value="카메라 중지" id="stopScanner" onclick="stopScanner()" style="display:none;">
+    </div>
+    <br>
+
+    <!-- 검색 폼 + 자동완성 (기존 search.html 인라인) -->
+    <form class="row g-3 w-100" onsubmit="return false;">
+      <div class="col-5 position-relative mb-2">
+        <input type="text" class="form-control" maxlength="8" oninput="maxLengthCheck(this)" id="searchCode"
+          name="searchCode" style="background-color:rgb(250, 171, 171); font-size:100%; width:100%; max-width: 180px;"
+          onfocus="this.value=''" onkeyup="if(event.keyCode==13){search()}" autocomplete="off" />
+        <div id="autocomplete-list" class="list-group position-absolute"
+          style="z-index: 1050; display: none; max-height: 250px; overflow-y: auto; width: 180px; box-shadow: 0 4px 6px rgba(0,0,0,0.15); font-size: 16px; background-color: #fff;">
+        </div>
+      </div>
+      <div class="col-5 mb-2">
+        <input type="text" class="form-control" id="searchInput" disabled placeholder="학생증을 스캔하세요.">
+      </div>
+      <div class="col-2 mb-2">
+        <button class="btn btn-outline-secondary" type="button" onclick="search()">검색</button>
+      </div>
+      <div class="mb-2 w-100">
+        <center><b id="tblMessage" style="color:red"></b></center>
+      </div>
+    </form>
+
+    <table class="table table-bordered border-primary form-control-sm text-center align-middle">
+      <thead class="table-light border-primary" style="border-bottom: 2px solid #0d6efd;">
+        <tr class="border-primary">
+          <th scope="col" class="border-primary" style="white-space: nowrap; width: 60px;">학생</th>
+          <th scope="col" class="border-primary">반</th>
+          <th scope="col" class="border-primary">퀀텀관 등</th>
+          <th scope="col" class="border-primary">walk(스캔일시)</th>
+          <th scope="col" class="border-primary">종료일시</th>
+          <th scope="col" class="border-primary" style="white-space: nowrap; width: 95px;">산책종료</th>
+        </tr>
+      </thead>
+      <tbody id="searchResults"></tbody>
+    </table>
+    <div id="msgDiv"></div>
+  </div>
+
+  <template id="rowtemplate">
+    <tr>
+      <td class="studentInfo text-center p-1" style="line-height: 1.1; white-space: nowrap;">
+        <div class="sID fw-bold text-danger" style="font-size: 0.65rem; margin-bottom: 1px;"></div>
+        <div class="student fw-bold text-primary" style="font-size: 0.75rem;"></div>
+      </td>
+      <td class="ban"></td>
+      <td class="qtum"></td>
+      <td class="walkTime fw-bold"></td>
+      <td class="endTime fw-bold text-success"></td>
+      <td class="actionBtn p-1" style="white-space: nowrap;">
+        <button class="btn btn-sm btn-success endWalkBtn" style="white-space: nowrap;">산책중</button>
+      </td>
+    </tr>
+  </template>
+
+  <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.6/dist/umd/popper.min.js"
+    integrity="sha384-oBqDVmMz9ATKxIep9tiCxS/Z9fNfEXiDAYTujMAeBAsjFuCZSmKbSSUnQlmh/jp3"
+    crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.min.js"
+    integrity="sha384-cuYeSxntonz0PPNlHhBs68uyIAVpIIOZZ5JqeqvYYIcEL727kskC66kF92t6Xl2V"
+    crossorigin="anonymous"></script>
+
+  <script>
+    // ===== 설정: 본인 GAS 웹앱 주소로 교체하세요 =====
+    // 예: https://script.google.com/macros/s/AKfycb..../exec
+    const GAS_API_URL = "여기에_본인_GAS_웹앱_exec_주소_붙여넣기";
+
+    // ===== JSONP 헬퍼: 모든 서버호출을 이걸로 통일 (CORS 우회) =====
+    let gasCallSeq = 0;
+    function gasCall(action, payload) {
+      return new Promise(function (resolve, reject) {
+        const cbName = "gas_cb_" + (gasCallSeq++);
+        const script = document.createElement("script");
+        let done = false;
+
+        function cleanup() {
+          try { delete window[cbName]; } catch (e) { window[cbName] = undefined; }
+          if (script.parentNode) script.parentNode.removeChild(script);
+        }
+
+        window[cbName] = function (data) {
+          done = true;
+          cleanup();
+          resolve(data);
+        };
+
+        let src = GAS_API_URL + "?action=" + encodeURIComponent(action) + "&callback=" + cbName;
+        if (payload) {
+          src += "&payload=" + encodeURIComponent(JSON.stringify(payload));
+        }
+        script.onerror = function () {
+          if (!done) { cleanup(); reject(new Error("서버 호출 실패: " + action)); }
+        };
+        script.src = src;
+        document.body.appendChild(script);
+      });
+    }
+
+    // ===== 전역 상태 =====
+    var data = [];                 // 학생 마스터
+    var chk_old = 0;               // 직전 스캔 코드 (10초 중복 방지)
+    var lastScannedTimeChk = 0;
+    var selectedManager = "";      // 선택된 담당자
+    var walkTimeoutMinutes = 10;
+    var recentWalkInterval = null;
+    var timeCheckInterval = null;
+
+    function maxLengthCheck(object) {
+      if (object.value.length > object.maxLength) {
+        object.value = object.value.slice(0, object.maxLength);
+      }
+    }
+
+    // ===== 담당자 선택 =====
+    function selectManager(managerName) {
+      selectedManager = managerName;
+      const modal = bootstrap.Modal.getInstance(document.getElementById('managerModal'));
+      if (modal) modal.hide();
+      document.getElementById('barcodeInput').style.display = 'none';
+      startScanner();
+    }
+
+    function loadManagerList() {
+      gasCall('getManagerList').then(function (managers) {
+        const div = document.getElementById('managerList');
+        div.innerHTML = '';
+
+        if (!managers || managers.length === 0) {
+          div.innerHTML = '<p class="text-danger">담당자 목록이 없습니다. wakeup담당자 시트를 확인해주세요.</p>';
+          setTimeout(function () { selectManager(""); }, 2000);
+          return;
+        }
+
+        managers.forEach(function (m) {
+          const btn = document.createElement('button');
+          btn.className = 'btn btn-outline-primary manager-select-btn';
+          btn.textContent = m;
+          btn.onclick = function () { selectManager(m); };
+          div.appendChild(btn);
+        });
+
+        const modal = new bootstrap.Modal(document.getElementById('managerModal'));
+        modal.show();
+      }).catch(function (e) {
+        document.getElementById('managerList').innerHTML =
+          '<p class="text-danger">담당자 목록 로드 실패: ' + e.message + '<br>GAS_API_URL을 확인하세요.</p>';
+      });
+    }
+
+    // ===== 화면 로드 =====
+    document.addEventListener('DOMContentLoaded', function () {
+      document.addEventListener('click', function () { initAudioContext(); }, { once: true });
+      document.addEventListener('touchstart', function () { initAudioContext(); }, { once: true });
+
+      loadManagerList();
+
+      gasCall('getDataForSearch').then(function (d) {
+        data = d ? d.slice() : [];
+      }).catch(function () { data = []; });
+
+      fetchRecentWalks();
+      recentWalkInterval = setInterval(fetchRecentWalks, 5000);
+      timeCheckInterval = setInterval(checkTimeouts, 10000);
+    });
+
+    // ===== 검색 + 저장 =====
+    function search() {
+      beep();
+      document.getElementById("tblMessage").textContent = "";
+      var msgDiv = document.querySelector("#msgDiv");
+      if (msgDiv) msgDiv.textContent = "";
+
+      if (!selectedManager || selectedManager === "") {
+        document.getElementById("tblMessage").textContent = "담당자를 먼저 선택해주세요.";
+        loadManagerList();
+        return;
+      }
+
+      var chkCode = document.getElementById('searchCode').value.trim();
+      if (!chkCode) {
+        document.getElementById("tblMessage").textContent = "학생 코드를 입력해주세요.";
+        return;
+      }
+      document.getElementById('searchInput').value = chkCode;
+
+      var searchWords = chkCode.split(/\s+/);
+      var searchColumns = [2]; // 학번 컬럼
+      var resultsArray = data.filter(function (r) {
+        return searchWords.every(function (word) {
+          return searchColumns.some(function (colIndex) {
+            return r[colIndex] != null &&
+              r[colIndex].toString().toLowerCase().includes(word.toLowerCase());
+          });
+        });
+      });
+
+      var currentTimeChk = Date.now();
+
+      if (resultsArray.length === 1) {
+        // 직전과 같은 코드를 10초 내 다시 스캔하면 무시
+        if (chk_old == chkCode && (currentTimeChk - lastScannedTimeChk < 10000)) {
+          lastScannedTimeChk = currentTimeChk;
+          document.getElementById("tblMessage").textContent = "저장된 학생입니다.";
+          document.getElementById('searchCode').value = "";
+          return;
+        }
+        lastScannedTimeChk = currentTimeChk;
+        chk_old = chkCode;
+
+        var result = resultsArray[0];
+        var h_ban = result[0] + result[1];
+        var h_ksuk = result[3];
+        var h_id = result[2];
+        var h_name = result[5];
+        var h_qtum = result[6];
+        var h_hosil = result[7];
+        var h_seatNo = result[8];
+
+        var dt = new Date();
+        var year = dt.getFullYear();
+        var month = ('0' + (dt.getMonth() + 1)).slice(-2);
+        var day = ('0' + dt.getDate()).slice(-2);
+        var hh = ('0' + dt.getHours()).slice(-2);
+        var mm = ('0' + dt.getMinutes()).slice(-2);
+        var ss = ('0' + dt.getSeconds()).slice(-2);
+        var setDateTime = year + '-' + month + '-' + day + ' ' + hh + ':' + mm + ':' + ss;
+
+        var h_qtumAll = h_qtum + " " + h_hosil + " " + h_seatNo;
+
+        document.getElementById('searchCode').value = "";
+        document.getElementById("tblMessage").textContent = "정상적으로 등록되었습니다.";
+
+        // 낙관적(즉시) 행 추가
+        var tbody = document.getElementById("searchResults");
+        var templateBox = document.getElementById("rowtemplate");
+        if (tbody && templateBox) {
+          var template = templateBox.content.cloneNode(true);
+          var tr = template.querySelector("tr");
+          tr.dataset.walkTime = setDateTime;
+          tr.dataset.endTime = "";
+          template.querySelector(".sID").textContent = h_id;
+          template.querySelector(".student").textContent = h_name;
+          template.querySelector(".ban").textContent = h_ban;
+          template.querySelector(".qtum").textContent = h_qtumAll;
+          template.querySelector(".walkTime").textContent = setDateTime;
+          template.querySelector(".endTime").textContent = "0분 경과";
+          template.querySelector(".endTime").className = "endTime fw-bold text-secondary";
+          var btn = template.querySelector(".endWalkBtn");
+          btn.onclick = function () { endWalk(h_id, setDateTime, btn, tr); };
+          tr.dataset.completed = "false";
+          tbody.insertBefore(template, tbody.firstChild);
+        }
+
+        // 서버 저장 후 최근 목록 동기화
+        gasCall('addStudent', {
+          id: h_id, ban: result[0], kbn: result[1], name: h_name,
+          dateTime: setDateTime, manager: selectedManager, ksuk: h_ksuk, qtumAll: h_qtumAll
+        }).then(function (response) {
+          if (response) {
+            walkTimeoutMinutes = response.timeout;
+            renderRecentWalks(response.data);
+            checkTimeouts();
+          }
+        }).catch(function () {
+          document.getElementById("tblMessage").textContent = "저장 요청 실패 — 네트워크를 확인하세요.";
+        });
+
+      } else {
+        document.getElementById("tblMessage").textContent = "학생코드를 확인해주세요.";
+        document.getElementById('searchCode').value = "";
+      }
+    }
+
+    // ===== 최근 산책 목록 =====
+    function fetchRecentWalks() {
+      gasCall('getRecentWalks').then(function (response) {
+        if (response) {
+          walkTimeoutMinutes = response.timeout;
+          renderRecentWalks(response.data);
+          checkTimeouts();
+        }
+      }).catch(function () { });
+    }
+
+    function renderRecentWalks(list) {
+      var tbody = document.getElementById("searchResults");
+      if (!tbody) return;
+      tbody.innerHTML = "";
+
+      var templateBox = document.getElementById("rowtemplate");
+      if (!templateBox || !list) return;
+
+      list.forEach(function (item) {
+        var template = templateBox.content.cloneNode(true);
+        var tr = template.querySelector("tr");
+
+        tr.dataset.walkTime = item.walkTime;
+        tr.dataset.endTime = item.endTime;
+
+        template.querySelector(".sID").textContent = item.id;
+        template.querySelector(".student").textContent = item.name;
+        template.querySelector(".ban").textContent = item.ban + item.kbn;
+        template.querySelector(".qtum").textContent = item.qtumAll;
+        template.querySelector(".walkTime").textContent = item.walkTime;
+        template.querySelector(".endTime").textContent = item.endTime;
+
+        var btn = template.querySelector(".endWalkBtn");
+        var endCell = template.querySelector(".endTime");
+
+        if (item.endTime && item.endTime !== "") {
+          btn.disabled = true;
+          btn.className = "btn btn-sm btn-secondary";
+          btn.textContent = "종료됨";
+          tr.dataset.completed = "true";
+          endCell.className = "endTime fw-bold text-success";
+        } else {
+          (function (it, b, t) {
+            b.onclick = function () { endWalk(it.id, it.walkTime, b, t); };
+          })(item, btn, tr);
+          btn.textContent = "산책중";
+          tr.dataset.completed = "false";
+          endCell.className = "endTime fw-bold text-secondary";
+        }
+
+        tbody.appendChild(template);
+      });
+    }
+
+    function checkTimeouts() {
+      var tbody = document.getElementById("searchResults");
+      if (!tbody) return;
+      var rows = tbody.querySelectorAll("tr");
+      var now = new Date().getTime();
+      var timeoutMs = walkTimeoutMinutes * 60 * 1000;
+
+      rows.forEach(function (tr) {
+        var walkCell = tr.querySelector(".walkTime");
+        if (tr.dataset.completed === "true") {
+          if (walkCell) { walkCell.style.color = ""; walkCell.style.backgroundColor = ""; }
+          return;
+        }
+
+        var walkTimeStr = tr.dataset.walkTime;
+        if (!walkTimeStr) return;
+
+        var walkDate = new Date(walkTimeStr.replace(" ", "T"));
+        if (isNaN(walkDate.getTime())) return;
+
+        var elapsedMs = now - walkDate.getTime();
+        var elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));
+        if (elapsedMinutes < 0) elapsedMinutes = 0;
+
+        var endCell = tr.querySelector(".endTime");
+        if (endCell) endCell.textContent = elapsedMinutes + "분 경과";
+
+        if (elapsedMs > timeoutMs) {
+          if (walkCell) { walkCell.style.color = "white"; walkCell.style.backgroundColor = "red"; }
+          if (endCell) endCell.className = "endTime fw-bold text-danger";
+        } else {
+          if (walkCell) { walkCell.style.color = ""; walkCell.style.backgroundColor = ""; }
+          if (endCell) endCell.className = "endTime fw-bold text-secondary";
+        }
+      });
+    }
+
+    function endWalk(id, walkTime, btn, tr) {
+      var dt = new Date();
+      var year = dt.getFullYear();
+      var month = ('0' + (dt.getMonth() + 1)).slice(-2);
+      var day = ('0' + dt.getDate()).slice(-2);
+      var hh = ('0' + dt.getHours()).slice(-2);
+      var mm = ('0' + dt.getMinutes()).slice(-2);
+      var ss = ('0' + dt.getSeconds()).slice(-2);
+      var endTimeStr = year + '-' + month + '-' + day + ' ' + hh + ':' + mm + ':' + ss;
+
+      btn.disabled = true;
+      btn.className = "btn btn-sm btn-secondary";
+      btn.textContent = "저장중...";
+      tr.dataset.completed = "true";
+
+      var endCell = tr.querySelector(".endTime");
+      if (endCell) { endCell.textContent = endTimeStr; endCell.className = "endTime fw-bold text-success"; }
+
+      var walkCell = tr.querySelector(".walkTime");
+      if (walkCell) { walkCell.style.color = ""; walkCell.style.backgroundColor = ""; }
+
+      gasCall('setEndWalkTime', { id: id, walkTime: walkTime, endTime: endTimeStr })
+        .then(function (success) { btn.textContent = success ? "종료됨" : "실패"; })
+        .catch(function () { btn.textContent = "실패"; });
+    }
+
+    // ===== 소리 =====
+    let audioCtx = null;
+    function initAudioContext() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      return audioCtx;
+    }
+
+    function beep() {
+      try {
+        const ctx = initAudioContext();
+        const oscillator = ctx.createOscillator();
+        const gain = ctx.createGain();
+        oscillator.frequency.value = 800;
+        oscillator.type = 'sine';
+        const now = ctx.currentTime;
+        gain.gain.setValueAtTime(0, now);
+        gain.gain.linearRampToValueAtTime(0.8, now + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        oscillator.connect(gain);
+        gain.connect(ctx.destination);
+        oscillator.start(now);
+        oscillator.stop(now + 0.1);
+      } catch (error) {
+        if (navigator.vibrate) navigator.vibrate(50);
+      }
+    }
+
+    // ===== 실시간 카메라 (버셀 HTTPS 최상위 페이지라 정상 작동) =====
+    async function requestCameraPermission() {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        stream.getTracks().forEach(function (t) { t.stop(); });
+        return true;
+      } catch (error) {
+        alert("카메라 접근 권한이 필요합니다.\n(" + error.name + ": " + error.message + ")");
+        return false;
+      }
+    }
+
+    async function startScanner() {
+      document.getElementById('stopScanner').style.display = 'block';
+      document.getElementById('startScanner').style.display = 'none';
+
+      const ok = await requestCameraPermission();
+      if (!ok) {
+        document.getElementById('stopScanner').style.display = 'none';
+        document.getElementById('startScanner').style.display = 'block';
+        return;
+      }
+
+      let lastScannedTime = 0;
+
+      Quagga.init({
+        inputStream: {
+          name: "Live",
+          type: "LiveStream",
+          target: document.querySelector('#interactive'),
+          constraints: { width: 320, height: 640, facingMode: "environment" }
+        },
+        decoder: { readers: ["code_128_reader"] },
+        locate: true,
+        locator: { patchSize: "large", halfSample: false },
+        frequency: 30,
+        area: { top: "10%", right: "10%", left: "10%", bottom: "10%" }
+      }, function (err) {
+        if (err) {
+          console.log(err);
+          alert("카메라 초기화 실패: " + err);
+          return;
+        }
+        Quagga.start();
+      });
+
+      Quagga.onDetected(function (data) {
+        const currentTime = Date.now();
+        if (currentTime - lastScannedTime < 9000) return; // 9초 내 중복 방지
+        lastScannedTime = currentTime;
+
+        beep();
+        const barcodeValue = data.codeResult.code;
+        document.getElementById('barcodeInput').value = barcodeValue;
+        document.getElementById('searchCode').value = barcodeValue;
+        search();
+      });
+    }
+
+    function stopScanner() {
+      try { Quagga.stop(); } catch (e) { }
+      document.getElementById('stopScanner').style.display = 'none';
+      document.getElementById('startScanner').style.display = 'block';
+    }
+
+    // ===== 이름 자동완성 =====
+    document.addEventListener('input', function (e) {
+      if (e.target && e.target.id === 'searchCode') handleSearchCodeInput(e.target);
+    });
+    document.addEventListener('focusin', function (e) {
+      if (e.target && e.target.id === 'searchCode') handleSearchCodeInput(e.target);
+    });
+
+    function handleSearchCodeInput(inputElement) {
+      const autocompleteList = document.getElementById('autocomplete-list');
+      if (!autocompleteList) return;
+
+      const val = inputElement.value.trim();
+      autocompleteList.innerHTML = '';
+
+      if (!val || !data || data.length === 0) {
+        autocompleteList.style.display = 'none';
+        return;
+      }
+
+      const matches = data.filter(function (student) {
+        const name = student[5] ? student[5].toString() : '';
+        return name.toLowerCase().includes(val.toLowerCase());
+      });
+
+      if (matches.length === 0) {
+        autocompleteList.style.display = 'none';
+        return;
+      }
+
+      matches.slice(0, 10).forEach(function (student) {
+        const ban = (student[0] || '') + (student[1] || '');
+        const id = student[2] || '';
+        const name = student[5] || '';
+
+        const item = document.createElement('a');
+        item.href = 'javascript:void(0);';
+        item.className = 'list-group-item list-group-item-action py-2 px-3';
+        item.style.fontSize = '15px';
+        item.style.cursor = 'pointer';
+        item.innerHTML = '<strong>' + name + '</strong> <span class="text-muted" style="font-size: 13px;">(' + ban + ')</span>';
+
+        item.addEventListener('click', function (e) {
+          e.preventDefault();
+          inputElement.value = id;
+          autocompleteList.innerHTML = '';
+          autocompleteList.style.display = 'none';
+          search();
+        });
+
+        autocompleteList.appendChild(item);
+      });
+
+      autocompleteList.style.display = 'block';
+    }
+
+    document.addEventListener('click', function (e) {
+      const autocompleteList = document.getElementById('autocomplete-list');
+      const searchCode = document.getElementById('searchCode');
+      if (autocompleteList && e.target !== searchCode && !autocompleteList.contains(e.target)) {
+        autocompleteList.style.display = 'none';
+      }
+    });
+  </script>
+</body>
+
+</html>

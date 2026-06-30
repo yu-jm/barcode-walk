@@ -338,6 +338,21 @@
         d.getDate() === now.getDate();
     }
 
+    // walk 셀: 윗줄 일시 + 아랫줄 등록자명(담당자)
+    function setWalkCell(cellEl, dateTimeStr, managerName) {
+      if (!cellEl) return;
+      cellEl.innerHTML = '';
+      var t = document.createElement('div');
+      t.textContent = dateTimeStr || '';
+      var m = document.createElement('div');
+      m.textContent = managerName || '';
+      m.style.fontWeight = 'normal';
+      m.style.fontSize = '0.85em';
+      m.style.color = '#555';
+      cellEl.appendChild(t);
+      cellEl.appendChild(m);
+    }
+
     // ===== 담당자 선택 =====
     function selectManager(managerName) {
       selectedManager = managerName;
@@ -469,7 +484,7 @@
           template.querySelector(".student").textContent = h_name;
           template.querySelector(".ban").textContent = h_ban;
           template.querySelector(".qtum").textContent = h_qtumAll;
-          template.querySelector(".walkTime").textContent = setDateTime;
+          setWalkCell(template.querySelector(".walkTime"), setDateTime, selectedManager);
           template.querySelector(".endTime").textContent = "0분 경과";
           template.querySelector(".endTime").className = "endTime fw-bold text-secondary";
           var btn = template.querySelector(".endWalkBtn");
@@ -537,7 +552,7 @@
         template.querySelector(".student").textContent = item.name;
         template.querySelector(".ban").textContent = item.ban + item.kbn;
         template.querySelector(".qtum").textContent = item.qtumAll;
-        template.querySelector(".walkTime").textContent = item.walkTime;
+        setWalkCell(template.querySelector(".walkTime"), item.walkTime, item.manager);
         template.querySelector(".endTime").textContent = item.endTime;
 
         var btn = template.querySelector(".endWalkBtn");

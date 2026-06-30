@@ -27,15 +27,29 @@
       align-items: center;
       padding: 0 10px;
       box-sizing: border-box;
+      zoom: 0.9;          /* 화면 전체 약 10% 축소 */
     }
 
     #interactive {
-      width: 95%;
+      position: relative;
+      width: 32%;        /* 기존 95% → 약 1/3 */
+      height: 150px;     /* 기존 높이 → 약 1/2 */
       max-width: 95%;
-      height: auto;
       margin: 0 auto;
       display: block;
+      overflow: hidden;
       box-sizing: border-box;
+    }
+
+    /* Quagga가 넣는 영상/캔버스를 축소된 박스에 맞춤 (스캔 인식은 원본 프레임 기준이라 영향 없음) */
+    #interactive video,
+    #interactive canvas {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100% !important;
+      height: 100% !important;
+      object-fit: cover;
     }
 
     canvas.drawing,

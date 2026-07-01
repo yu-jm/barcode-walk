@@ -739,6 +739,16 @@
       });
     }
 
+    // walk 시각 문자열을 형식에 상관없이 안전하게 Date로 변환
+    // (구글시트가 "2026-07-01 6:05:02"처럼 시의 앞 0을 떼고 돌려줘도 파싱되도록 숫자만 추출)
+    function parseWalkDate(str) {
+      if (!str) return null;
+      var m = String(str).match(/(\d{4})\D+(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})\D+(\d{1,2})/);
+      if (!m) return null;
+      var d = new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]);
+      return isNaN(d.getTime()) ? null : d;
+    }
+
     function checkTimeouts() {
       var tbody = document.getElementById("searchResults");
       if (!tbody) return;
@@ -757,8 +767,8 @@
         var walkTimeStr = tr.dataset.walkTime;
         if (!walkTimeStr) return;
 
-        var walkDate = new Date(walkTimeStr.replace(" ", "T"));
-        if (isNaN(walkDate.getTime())) return;
+        var walkDate = parseWalkDate(walkTimeStr);
+        if (!walkDate) return;
 
         var elapsedMs = now - walkDate.getTime();
         var elapsedMinutes = Math.floor(elapsedMs / (60 * 1000));

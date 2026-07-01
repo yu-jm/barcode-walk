@@ -289,6 +289,12 @@
       color: var(--text-main);
     }
 
+    /* 산책허용시간 초과(진행중이거나 늦게 복귀)한 학생 이름 강조 */
+    table.table tbody .student.over {
+      color: #c0392b;
+      font-weight: 700;
+    }
+
     /* 산책중/종료 버튼 — 부드러운 모양 (상태색은 유지) */
     table.table td.actionBtn button {
       font-size: 0.55rem;
@@ -378,6 +384,11 @@
       </div>
     </div>
 
+    <!-- 현재 산책중 인원 카운트 -->
+    <div class="px-2 mb-1" style="text-align:left;">
+      <span id="walkingCount" style="font-weight:700; color:var(--primary); font-size:0.9rem;">산책중 : 0명</span>
+    </div>
+
     <table class="table table-bordered border-primary form-control-sm text-center align-middle">
       <thead class="table-light border-primary" style="border-bottom: 2px solid #0d6efd;">
         <tr class="border-primary">
@@ -459,6 +470,7 @@
     var lastScannedTimeChk = 0;
     var selectedManager = "";      // 선택된 담당자
     var walkTimeoutMinutes = 10;
+    var pendingEnds = {};          // 방금 종료 처리한 행(서버 반영 전) 보호용: key→종료시간
     var recentWalkInterval = null;
     var timeCheckInterval = null;
 
@@ -653,6 +665,7 @@
           btn.onclick = function () { endWalk(h_id, setDateTime, btn, tr); };
           tr.dataset.completed = "false";
           tbody.insertBefore(template, tbody.firstChild);
+          updateWalkingCount();
         }
 
         // 서버 저장: 진행바 표시 → 완료 시 숨김 + 최근 목록 동기화
@@ -707,20 +720,29 @@
         var template = templateBox.content.cloneNode(true);
         var tr = template.querySelector("tr");
 
+        // 서버가 아직 종료시간을 반영하지 못했어도, 방금 로컬에서 종료한 행이면 종료 상태 유지 (깜박임 방지)
+        var key = walkKey(item.id, item.walkTime);
+        var effectiveEnd = item.endTime;
+        if ((!effectiveEnd || effectiveEnd === "") && pendingEnds[key]) {
+          effectiveEnd = pendingEnds[key];
+        } else if (item.endTime && item.endTime !== "") {
+          delete pendingEnds[key];   // 서버가 따라잡음 → 로컬 보호기록 정리
+        }
+
         tr.dataset.walkTime = item.walkTime;
-        tr.dataset.endTime = item.endTime;
+        tr.dataset.endTime = effectiveEnd;
 
         template.querySelector(".sID").textContent = item.id;
         template.querySelector(".student").textContent = item.name;
         template.querySelector(".ban").textContent = item.ban + item.kbn;
         template.querySelector(".qtum").textContent = item.qtumAll;
         setWalkCell(template.querySelector(".walkTime"), item.walkTime, item.manager);
-        template.querySelector(".endTime").textContent = item.endTime;
+        template.querySelector(".endTime").textContent = effectiveEnd;
 
         var btn = template.querySelector(".endWalkBtn");
         var endCell = template.querySelector(".endTime");
 
-        if (item.endTime && item.endTime !== "") {
+        if (effectiveEnd && effectiveEnd !== "") {
           btn.disabled = true;
           btn.className = "btn btn-sm btn-secondary";
           btn.textContent = "종료됨";
@@ -737,6 +759,8 @@
 
         tbody.appendChild(template);
       });
+
+      updateWalkingCount();
     }
 
     // walk 시각 문자열을 형식에 상관없이 안전하게 Date로 변환
@@ -749,6 +773,21 @@
       return isNaN(d.getTime()) ? null : d;
     }
 
+    // 행 식별 키 (id + 산책시각). 표시형식이 "06:05"/"6:05"로 달라도 같은 키가 되도록 시각으로 정규화
+    function walkKey(id, walkTime) {
+      var d = parseWalkDate(walkTime);
+      return id + '|' + (d ? d.getTime() : walkTime);
+    }
+
+    // 현재 산책중(미종료) 인원 카운트 갱신
+    function updateWalkingCount() {
+      var tbody = document.getElementById("searchResults");
+      if (!tbody) return;
+      var n = tbody.querySelectorAll('tr[data-completed="false"]').length;
+      var el = document.getElementById("walkingCount");
+      if (el) el.textContent = "산책중 : " + n + "명";
+    }
+
     function checkTimeouts() {
       var tbody = document.getElementById("searchResults");
       if (!tbody) return;
@@ -759,15 +798,18 @@
       rows.forEach(function (tr) {
         var walkCell = tr.querySelector(".walkTime");
         var dtEl = walkCell ? walkCell.querySelector(".walk-dt") : null;
+        var nameEl = tr.querySelector(".student");
+        var walkDate = parseWalkDate(tr.dataset.walkTime);
+
         if (tr.dataset.completed === "true") {
           if (dtEl) dtEl.classList.remove("over");
+          // 완료된 행: 실제 산책시간(종료-시작)이 허용시간을 넘었으면 이름만 강조 유지
+          var endDate = parseWalkDate(tr.dataset.endTime);
+          var wasOver = walkDate && endDate && (endDate.getTime() - walkDate.getTime() > timeoutMs);
+          if (nameEl) nameEl.classList.toggle("over", !!wasOver);
           return;
         }
 
-        var walkTimeStr = tr.dataset.walkTime;
-        if (!walkTimeStr) return;
-
-        var walkDate = parseWalkDate(walkTimeStr);
         if (!walkDate) return;
 
         var elapsedMs = now - walkDate.getTime();
@@ -777,14 +819,13 @@
         var endCell = tr.querySelector(".endTime");
         if (endCell) endCell.textContent = elapsedMinutes + "분 경과";
 
-        if (elapsedMs > timeoutMs) {
-          if (dtEl) dtEl.classList.add("over");
-          if (endCell) endCell.className = "endTime fw-bold text-danger";
-        } else {
-          if (dtEl) dtEl.classList.remove("over");
-          if (endCell) endCell.className = "endTime fw-bold text-secondary";
-        }
+        var over = elapsedMs > timeoutMs;
+        if (dtEl) dtEl.classList.toggle("over", over);
+        if (nameEl) nameEl.classList.toggle("over", over);
+        if (endCell) endCell.className = "endTime fw-bold " + (over ? "text-danger" : "text-secondary");
       });
+
+      updateWalkingCount();
     }
 
     function endWalk(id, walkTime, btn, tr) {
@@ -797,10 +838,15 @@
       var ss = ('0' + dt.getSeconds()).slice(-2);
       var endTimeStr = year + '-' + month + '-' + day + ' ' + hh + ':' + mm + ':' + ss;
 
+      // 서버 반영 전까지 5초 갱신이 이 행을 "산책중"으로 되돌리지 못하게 보호
+      var key = walkKey(id, walkTime);
+      pendingEnds[key] = endTimeStr;
+
       btn.disabled = true;
       btn.className = "btn btn-sm btn-secondary";
       btn.textContent = "저장중...";
       tr.dataset.completed = "true";
+      tr.dataset.endTime = endTimeStr;
 
       var endCell = tr.querySelector(".endTime");
       if (endCell) { endCell.textContent = endTimeStr; endCell.className = "endTime fw-bold text-success"; }
@@ -809,9 +855,14 @@
       var dtEl = walkCell ? walkCell.querySelector(".walk-dt") : null;
       if (dtEl) dtEl.classList.remove("over");
 
+      updateWalkingCount();
+
       gasCall('setEndWalkTime', { id: id, walkTime: walkTime, endTime: endTimeStr })
-        .then(function (success) { btn.textContent = success ? "종료됨" : "실패"; })
-        .catch(function () { btn.textContent = "실패"; });
+        .then(function (success) {
+          btn.textContent = success ? "종료됨" : "실패";
+          if (!success) delete pendingEnds[key];   // 저장 실패 → 보호 해제(다음 갱신 때 산책중으로 되돌아가 문제 노출)
+        })
+        .catch(function () { btn.textContent = "실패"; delete pendingEnds[key]; });
     }
 
     // ===== 소리 =====

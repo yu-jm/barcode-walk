@@ -85,13 +85,15 @@ function getManagerList() {
     return [];
   }
 
-  // A열에서 담당자명 가져오기 (A1은 헤더이므로 A2부터)
-  const data = ws.getRange(2, 1, lastRow - 1, 1).getValues();
+  // A열: 담당자명, B열: 구분 (구분이 "1"인 담당자만 표시). A2부터 (A1은 헤더)
+  const data = ws.getRange(2, 1, lastRow - 1, 2).getValues();
   const managers = [];
 
   for (let i = 0; i < data.length; i++) {
-    if (data[i][0] && data[i][0].toString().trim() !== "") {
-      managers.push(data[i][0].toString().trim());
+    const name = data[i][0] ? data[i][0].toString().trim() : "";
+    const flag = data[i][1] != null ? data[i][1].toString().trim() : "";
+    if (name !== "" && flag === "1") {
+      managers.push(name);
     }
   }
 

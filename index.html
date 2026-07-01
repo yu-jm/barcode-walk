@@ -290,8 +290,9 @@
     }
 
     /* 산책허용시간 초과(진행중이거나 늦게 복귀)한 학생 이름 강조 */
+    /* .text-primary(부트스트랩)가 !important로 색을 강제하므로 여기서도 !important 필요 */
     table.table tbody .student.over {
-      color: #c0392b;
+      color: #c0392b !important;
       font-weight: 700;
     }
 

@@ -919,6 +919,8 @@
         return;
       }
 
+      document.getElementById('interactive').style.display = 'block';  // 카메라 표시 영역 노출
+
       let lastScannedTime = 0;
 
       Quagga.init({
@@ -957,6 +959,11 @@
 
     function stopScanner() {
       try { Quagga.stop(); } catch (e) { }
+      var interactive = document.getElementById('interactive');
+      if (interactive) {
+        interactive.style.display = 'none';   // 카메라 표시 영역 숨김
+        interactive.innerHTML = '';           // 남은 정지 화면(video/canvas) 제거
+      }
       document.getElementById('stopScanner').style.display = 'none';
       document.getElementById('startScanner').style.display = 'block';
     }

@@ -51,7 +51,6 @@
       align-items: center;
       padding: 12px 10px;
       box-sizing: border-box;
-      zoom: 0.9;          /* 화면 전체 약 10% 축소 */
     }
 
     /* 카메라 박스 — 뉴모피즘 인셋 프레임 */
@@ -91,6 +90,7 @@
       text-align: center;
       margin: 12px auto 0;
       box-sizing: border-box;
+      position: relative;   /* 버전 라벨 절대배치 기준 */
     }
 
     /* 바코드 표시 입력 — 인셋 */
@@ -136,6 +136,7 @@
     .container-fluid {
       max-width: 100%;
       padding: 0 5px;
+      zoom: 0.9;          /* 화면 본문만 약 10% 축소 (모달은 제외 → 팝업 정중앙 유지) */
     }
 
     /* 검색 입력칸 — 인셋 */
@@ -221,6 +222,67 @@
 
     .manager-select-btn:active {
       box-shadow: var(--nm-inset-sm) !important;
+    }
+
+    /* 중앙 확인 팝업 — 뉴모피즘 카드 */
+    #confirmModal .modal-content {
+      border: none;
+      border-radius: 24px;
+      background: var(--bg);
+      box-shadow: var(--nm-raised);
+      padding: 6px 4px;
+    }
+
+    #confirmModal .confirm-icon {
+      width: 62px;
+      height: 62px;
+      margin: 6px auto 10px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.9rem;
+      background: var(--bg);
+      box-shadow: var(--nm-raised-sm);
+    }
+
+    #confirmModal .confirm-title {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: var(--primary);
+      margin-bottom: 6px;
+    }
+
+    #confirmModal .confirm-body {
+      font-size: 1.02rem;
+      color: var(--text-main);
+      line-height: 1.5;
+      margin-bottom: 18px;
+      word-break: keep-all;
+    }
+
+    #confirmModal .confirm-btn {
+      flex: 1;
+      font-size: 1.05rem;
+      font-weight: 700;
+      padding: 13px 0;
+      border: none;
+      border-radius: 14px;
+      background: var(--bg);
+      box-shadow: var(--nm-raised-sm);
+    }
+
+    #confirmModal .confirm-btn:active {
+      box-shadow: var(--nm-inset-sm);
+    }
+
+    #confirmModal .confirm-btn.ok {
+      color: #fff;
+      background: var(--primary);
+    }
+
+    #confirmModal .confirm-btn.cancel {
+      color: var(--text-muted);
     }
 
     /* 결과 테이블 — 뉴모피즘 카드 */
@@ -346,12 +408,31 @@
     </div>
   </div>
 
+  <!-- 중앙 확인 팝업 (산책 등록 / 종료 확인) -->
+  <div class="modal fade" id="confirmModal" tabindex="-1" aria-hidden="true"
+    data-bs-backdrop="static" data-bs-keyboard="false" style="z-index: 10000;">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 340px;">
+      <div class="modal-content">
+        <div class="modal-body text-center px-4 pt-4 pb-3">
+          <div class="confirm-icon" id="confirmModalIcon">🚶</div>
+          <div class="confirm-title" id="confirmModalLabel">확인</div>
+          <div class="confirm-body" id="confirmModalBody">진행할까요?</div>
+          <div class="d-flex gap-2">
+            <button type="button" class="confirm-btn cancel" onclick="confirmCancel()">취소</button>
+            <button type="button" class="confirm-btn ok" onclick="confirmOk()">확인</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <div class="container-fluid p-0">
     <div id="interactive" class="viewport"></div>
 
     <div id="resultBox">
       <input type="text" id="barcodeInput" placeholder="스캔된 바코드가 여기에 표시됩니다" readonly>
       <input type="button" value="카메라 활성화" id="startScanner" onclick="startScanner()" style="display:block;">
+      <span id="verLabel" style="position:absolute; top:2px; right:6px; font-size:0.62rem; color:var(--text-muted);">ver.2607011</span>
       <input type="button" value="카메라 중지" id="stopScanner" onclick="stopScanner()" style="display:none;">
     </div>
     <br>
@@ -471,6 +552,8 @@
     var lastScannedTimeChk = 0;
     var selectedManager = "";      // 선택된 담당자
     var walkTimeoutMinutes = 10;
+    var WALK_LIMIT = 15;           // 동시 산책중 최대 인원
+    var confirmOpen = false;       // 중앙 확인 팝업이 떠 있는 동안 스캔 중첩 방지
     var pendingEnds = {};          // 방금 종료 처리한 행(서버 반영 전) 보호용: key→종료시간
     var recentWalkInterval = null;
     var timeCheckInterval = null;
@@ -582,6 +665,7 @@
 
     // ===== 검색 + 저장 =====
     function search() {
+      if (confirmOpen) return;   // 확인 팝업이 떠 있으면 스캔 무시(중첩 방지)
       beep();
       document.getElementById("tblMessage").textContent = "";
       var msgDiv = document.querySelector("#msgDiv");
@@ -647,44 +731,65 @@
         document.getElementById('searchCode').value = "";
         document.getElementById("tblMessage").textContent = "";
 
-        // 낙관적(즉시) 행 추가
-        var tbody = document.getElementById("searchResults");
-        var templateBox = document.getElementById("rowtemplate");
-        if (tbody && templateBox) {
-          var template = templateBox.content.cloneNode(true);
-          var tr = template.querySelector("tr");
-          tr.dataset.walkTime = setDateTime;
-          tr.dataset.endTime = "";
-          template.querySelector(".sID").textContent = h_id;
-          template.querySelector(".student").textContent = h_name;
-          template.querySelector(".ban").textContent = h_ban;
-          template.querySelector(".qtum").textContent = h_qtumAll;
-          setWalkCell(template.querySelector(".walkTime"), setDateTime, selectedManager);
-          template.querySelector(".endTime").textContent = "0분 경과";
-          template.querySelector(".endTime").className = "endTime fw-bold text-secondary";
-          var btn = template.querySelector(".endWalkBtn");
-          btn.onclick = function () { endWalk(h_id, setDateTime, btn, tr); };
-          tr.dataset.completed = "false";
-          tbody.insertBefore(template, tbody.firstChild);
-          updateWalkingCount();
+        // 인원 제한 (#1,#4): 현재 산책중이 최대치면 팝업 없이 차단 + 메시지
+        if (currentWalkingCount() >= WALK_LIMIT) {
+          document.getElementById("tblMessage").textContent =
+            "산책 인원이 가득 찼습니다 (최대 " + WALK_LIMIT + "명). 먼저 산책을 종료해 주세요.";
+          chk_old = 0;   // 종료 후 같은 학생 재시도 가능하도록
+          return;
         }
 
-        // 서버 저장: 진행바 표시 → 완료 시 숨김 + 최근 목록 동기화
-        showSaveProgress();
-        gasCall('addStudent', {
-          id: h_id, ban: result[0], kbn: result[1], name: h_name,
-          dateTime: setDateTime, manager: selectedManager, ksuk: h_ksuk, qtumAll: h_qtumAll
-        }).then(function (response) {
-          hideSaveProgress();
-          document.getElementById("tblMessage").textContent = "정상적으로 등록되었습니다.";
-          if (response) {
-            walkTimeoutMinutes = response.timeout;
-            renderRecentWalks(response.data);
-            checkTimeouts();
+        // 등록 확인 팝업 (#2): 확인 시에만 등록 진행
+        showConfirm("산책 등록", h_name + " 학생을 산책 등록할까요?", "🚶").then(function (ok) {
+          if (!ok) { chk_old = 0; return; }
+
+          // 팝업이 열려 있는 사이 인원이 찼을 수 있어 재확인
+          if (currentWalkingCount() >= WALK_LIMIT) {
+            document.getElementById("tblMessage").textContent =
+              "산책 인원이 가득 찼습니다 (최대 " + WALK_LIMIT + "명). 먼저 산책을 종료해 주세요.";
+            chk_old = 0;
+            return;
           }
-        }).catch(function () {
-          hideSaveProgress();
-          document.getElementById("tblMessage").textContent = "저장 요청 실패 — 네트워크를 확인하세요.";
+
+          // 낙관적(즉시) 행 추가
+          var tbody = document.getElementById("searchResults");
+          var templateBox = document.getElementById("rowtemplate");
+          if (tbody && templateBox) {
+            var template = templateBox.content.cloneNode(true);
+            var tr = template.querySelector("tr");
+            tr.dataset.walkTime = setDateTime;
+            tr.dataset.endTime = "";
+            template.querySelector(".sID").textContent = h_id;
+            template.querySelector(".student").textContent = h_name;
+            template.querySelector(".ban").textContent = h_ban;
+            template.querySelector(".qtum").textContent = h_qtumAll;
+            setWalkCell(template.querySelector(".walkTime"), setDateTime, selectedManager);
+            template.querySelector(".endTime").textContent = "0분 경과";
+            template.querySelector(".endTime").className = "endTime fw-bold text-secondary";
+            var btn = template.querySelector(".endWalkBtn");
+            btn.onclick = function () { confirmEndWalk(h_id, setDateTime, btn, tr); };
+            tr.dataset.completed = "false";
+            tbody.insertBefore(template, tbody.firstChild);
+            updateWalkingCount();
+          }
+
+          // 서버 저장: 진행바 표시 → 완료 시 숨김 + 최근 목록 동기화
+          showSaveProgress();
+          gasCall('addStudent', {
+            id: h_id, ban: result[0], kbn: result[1], name: h_name,
+            dateTime: setDateTime, manager: selectedManager, ksuk: h_ksuk, qtumAll: h_qtumAll
+          }).then(function (response) {
+            hideSaveProgress();
+            document.getElementById("tblMessage").textContent = "정상적으로 등록되었습니다.";
+            if (response) {
+              walkTimeoutMinutes = response.timeout;
+              renderRecentWalks(response.data);
+              checkTimeouts();
+            }
+          }).catch(function () {
+            hideSaveProgress();
+            document.getElementById("tblMessage").textContent = "저장 요청 실패 — 네트워크를 확인하세요.";
+          });
         });
 
       } else {
@@ -751,7 +856,7 @@
           endCell.className = "endTime fw-bold text-success";
         } else {
           (function (it, b, t) {
-            b.onclick = function () { endWalk(it.id, it.walkTime, b, t); };
+            b.onclick = function () { confirmEndWalk(it.id, it.walkTime, b, t); };
           })(item, btn, tr);
           btn.textContent = "산책중";
           tr.dataset.completed = "false";
@@ -780,13 +885,60 @@
       return id + '|' + (d ? d.getTime() : walkTime);
     }
 
+    // 현재 산책중(미종료) 인원 수
+    function currentWalkingCount() {
+      var tbody = document.getElementById("searchResults");
+      return tbody ? tbody.querySelectorAll('tr[data-completed="false"]').length : 0;
+    }
+
     // 현재 산책중(미종료) 인원 카운트 갱신
     function updateWalkingCount() {
-      var tbody = document.getElementById("searchResults");
-      if (!tbody) return;
-      var n = tbody.querySelectorAll('tr[data-completed="false"]').length;
       var el = document.getElementById("walkingCount");
-      if (el) el.textContent = "산책중 : " + n + "명";
+      if (el) el.textContent = "산책중 : " + currentWalkingCount() + "명";
+    }
+
+    // ===== 중앙 확인 팝업 =====
+    var _confirmModal = null;
+    var _confirmResolve = null;
+
+    // title/message로 팝업을 띄우고, 확인=true / 취소=false 를 Promise로 반환
+    function showConfirm(title, message, icon) {
+      return new Promise(function (resolve) {
+        document.getElementById('confirmModalLabel').textContent = title;
+        document.getElementById('confirmModalBody').textContent = message;
+        document.getElementById('confirmModalIcon').textContent = icon || '🚶';
+        if (!_confirmModal) {
+          _confirmModal = new bootstrap.Modal(document.getElementById('confirmModal'));
+          document.getElementById('confirmModal').addEventListener('hidden.bs.modal', function () {
+            confirmOpen = false;
+            if (_confirmResolve) { var r = _confirmResolve; _confirmResolve = null; r(false); }
+          });
+        }
+        _confirmResolve = resolve;
+        confirmOpen = true;
+        _confirmModal.show();
+      });
+    }
+
+    function confirmOk() {
+      var r = _confirmResolve; _confirmResolve = null;
+      if (_confirmModal) _confirmModal.hide();
+      if (r) r(true);
+    }
+
+    function confirmCancel() {
+      var r = _confirmResolve; _confirmResolve = null;
+      if (_confirmModal) _confirmModal.hide();
+      if (r) r(false);
+    }
+
+    // 산책중 버튼 클릭 → 확인 팝업 후 실제 종료
+    function confirmEndWalk(id, walkTime, btn, tr) {
+      var nameEl = tr.querySelector('.student');
+      var name = nameEl ? nameEl.textContent : '';
+      showConfirm("산책 종료", name + " 학생의 산책을 종료할까요?", "🏁").then(function (ok) {
+        if (ok) endWalk(id, walkTime, btn, tr);
+      });
     }
 
     function checkTimeouts() {
